@@ -1,0 +1,1304 @@
+<!DOCTYPE html>
+<html lang="en" class="h-full">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>SakuraTunes - Offline Music Player</title>
+    <!-- Web App Manifest for Android PWA Install -->
+    <link rel="manifest" href="data:application/manifest+json;charset=utf-8,%7B%22name%22%3A%22SakuraTunes%22%2C%22short_name%22%3A%22SakuraTunes%22%2C%22start_url%22%3A%22.%22%2C%22display%22%3A%22standalone%22%2C%22background_color%22%3A%22%23120d13%22%2C%22theme_color%22%3A%22%23fb7185%22%2C%22icons%22%3A%5B%7B%22src%22%3A%22https%3A%2F%2Fplacehold.co%2F192x192%2F2d1f30%2Ffb7185%3Ftext%3D%25F0%259F%258C%25B8%22%2C%22sizes%22%3A%22192x192%22%2C%22type%22%3A%22image%2Fpng%22%7D%5D%7D">
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- FontAwesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- jsmediatags for client-side ID3 parsing -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jsmediatags/3.9.5/jsmediatags.min.js"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        sakura: {
+                            50: '#fff0f5',
+                            100: '#ffe4e8',
+                            200: '#fecdd6',
+                            300: '#fda4af',
+                            400: '#fb7185',
+                            500: '#f43f5e',
+                            600: '#e11d48',
+                            darkBg: '#120d13',
+                            darkCard: '#1e1620',
+                            darkAccent: '#2d1f30',
+                            glow: '#ff80ab'
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Comfortaa:wght@400;600;700&family=Inter:wght@300;400;500;600&display=swap');
+        
+        body {
+            font-family: 'Inter', sans-serif;
+            user-select: none;
+            -webkit-user-select: none;
+            touch-action: manipulation;
+        }
+        
+        .font-sakura {
+            font-family: 'Comfortaa', cursive;
+        }
+
+        /* Glassmorphism background effect */
+        .glass-panel {
+            background: rgba(30, 22, 32, 0.75);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            border: 1px solid rgba(255, 182, 193, 0.15);
+        }
+
+        .glass-card {
+            background: rgba(45, 31, 48, 0.6);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(254, 205, 214, 0.1);
+        }
+
+        /* Custom scrollbar */
+        ::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+        }
+        ::-webkit-scrollbar-track {
+            background: rgba(18, 13, 19, 0.5);
+        }
+        ::-webkit-scrollbar-thumb {
+            background: rgba(244, 63, 94, 0.4);
+            border-radius: 9999px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: rgba(244, 63, 94, 0.7);
+        }
+
+        /* Range Slider Styling */
+        input[type="range"] {
+            -webkit-appearance: none;
+            appearance: none;
+            background: transparent;
+        }
+        input[type="range"]::-webkit-slider-runnable-track {
+            height: 6px;
+            border-radius: 9999px;
+            background: rgba(255, 255, 255, 0.2);
+        }
+        input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            height: 16px;
+            width: 16px;
+            border-radius: 50%;
+            background: #fb7185;
+            margin-top: -5px;
+            box-shadow: 0 0 10px rgba(251, 113, 133, 0.8);
+            cursor: pointer;
+        }
+
+        /* Sakura Petals Background Canvas */
+        #sakura-canvas {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            z-index: 0;
+        }
+        
+        /* Album vinyl rotation animation */
+        @keyframes spin-slow {
+            from { transform: rotate(0deg); }
+            to { transform: rotate(360deg); }
+        }
+        .animate-vinyl {
+            animation: spin-slow 18s linear infinite;
+        }
+        .paused {
+            animation-play-state: paused;
+        }
+    </style>
+</head>
+<body class="bg-sakura-darkBg text-slate-100 h-full overflow-hidden flex flex-col antialiased select-none">
+
+    <!-- Interactive Canvas for Petals Animation -->
+    <canvas id="sakura-canvas"></canvas>
+
+    <!-- App Container -->
+    <div id="app" class="relative z-10 flex flex-col h-full max-w-md md:max-w-4xl mx-auto w-full shadow-2xl overflow-hidden glass-panel md:my-auto md:h-[94vh] md:rounded-3xl border-slate-800">
+        
+        <!-- Header -->
+        <header class="flex items-center justify-between px-5 py-4 border-b border-sakura-300/10 z-20">
+            <div class="flex items-center space-x-3">
+                <div class="w-9 h-9 rounded-full bg-gradient-to-tr from-sakura-500 to-sakura-300 flex items-center justify-center shadow-lg shadow-sakura-500/30">
+                    <i class="fa-solid font-bold fa-flower-tulip text-white text-lg">🌸</i>
+                </div>
+                <div>
+                    <h1 class="font-sakura font-bold text-lg bg-gradient-to-r from-sakura-200 via-sakura-300 to-sakura-400 bg-clip-text text-transparent">SakuraTunes</h1>
+                    <p class="text-[10px] text-sakura-300/60 font-medium tracking-wider uppercase">Offline Music Experience</p>
+                </div>
+            </div>
+            <div class="flex items-center space-x-2">
+                <label for="audio-file-input" class="p-2.5 rounded-full bg-sakura-500/20 hover:bg-sakura-500/30 text-sakura-300 cursor-pointer transition-all duration-200 active:scale-95 flex items-center justify-center">
+                    <i class="fa-solid fa-folder-plus text-base"></i>
+                </label>
+                <input type="file" id="audio-file-input" accept="audio/*" multiple class="hidden">
+            </div>
+        </header>
+
+        <!-- Main Content Area -->
+        <main class="flex-1 overflow-y-auto px-4 py-3 relative z-10" id="main-view-container">
+            
+            <!-- View: Custom (Default) -->
+            <section id="view-custom" class="view-section space-y-5">
+                <!-- Welcome Banner -->
+                <div class="relative overflow-hidden rounded-2xl bg-gradient-to-r from-sakura-600/40 via-sakura-500/20 to-purple-900/30 p-5 border border-sakura-300/20 shadow-xl">
+                    <div class="relative z-10">
+                        <span class="inline-block px-2.5 py-0.5 rounded-full bg-sakura-500/30 text-sakura-200 text-xs font-semibold mb-2">🌸 Customized Dashboard</span>
+                        <h2 class="text-xl font-bold font-sakura text-white mb-1">Welcome to SakuraTunes</h2>
+                        <p class="text-xs text-sakura-100/80 leading-relaxed mb-4">Your personal offline library. Drop local audio files anytime to enrich your music collection.</p>
+                        <button id="import-btn-banner" class="px-4 py-2 rounded-xl bg-sakura-500 hover:bg-sakura-600 text-white font-medium text-xs shadow-lg shadow-sakura-500/30 transition-all flex items-center space-x-2">
+                            <i class="fa-solid fa-plus"></i>
+                            <span>Add Local Songs</span>
+                        </button>
+                    </div>
+                    <div class="absolute -right-6 -bottom-6 text-7xl opacity-20 text-sakura-300 pointer-events-none">🌸</div>
+                </div>
+
+                <!-- Custom Dashboard Widgets Grid -->
+                <div class="grid grid-cols-2 gap-3">
+                    <div class="glass-card p-4 rounded-2xl flex flex-col justify-between border border-sakura-300/10">
+                        <div class="flex justify-between items-center text-sakura-300">
+                            <i class="fa-solid fa-music text-lg"></i>
+                            <span class="text-[10px] uppercase font-bold text-sakura-300/60">Library</span>
+                        </div>
+                        <div class="mt-3">
+                            <p id="custom-total-tracks" class="text-2xl font-bold text-white">0</p>
+                            <p class="text-xs text-slate-400">Total Offline Tracks</p>
+                        </div>
+                    </div>
+
+                    <div class="glass-card p-4 rounded-2xl flex flex-col justify-between border border-sakura-300/10">
+                        <div class="flex justify-between items-center text-sakura-400">
+                            <i class="fa-solid fa-compact-disc text-lg"></i>
+                            <span class="text-[10px] uppercase font-bold text-sakura-300/60">Artwork</span>
+                        </div>
+                        <div class="mt-3">
+                            <p id="custom-art-mode-display" class="text-sm font-semibold text-white">Both (ID3 + Fallback)</p>
+                            <p class="text-xs text-slate-400">Active Album Art Mode</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Quick Favorites / Playlists Preview -->
+                <div>
+                    <div class="flex justify-between items-center mb-3">
+                        <h3 class="font-sakura font-semibold text-sm text-sakura-200 flex items-center gap-2">
+                            <i class="fa-solid fa-heart text-sakura-400"></i> Favorites & Quick Play
+                        </h3>
+                    </div>
+                    <div id="custom-favorites-list" class="space-y-2">
+                        <!-- Populated dynamically -->
+                    </div>
+                </div>
+
+                <!-- Recently Added Tracks -->
+                <div>
+                    <div class="flex justify-between items-center mb-3">
+                        <h3 class="font-sakura font-semibold text-sm text-sakura-200">Recently Loaded</h3>
+                        <button class="nav-shortcut-btn text-xs text-sakura-400 hover:text-sakura-300" data-target="view-tracks">View All</button>
+                    </div>
+                    <div id="custom-recent-list" class="space-y-2">
+                        <!-- Populated dynamically -->
+                    </div>
+                </div>
+            </section>
+
+            <!-- View: Tracks -->
+            <section id="view-tracks" class="view-section space-y-3 hidden">
+                <div class="flex justify-between items-center mb-2">
+                    <h2 class="font-sakura font-bold text-lg text-white">All Tracks</h2>
+                    <span id="track-count" class="text-xs text-sakura-300/70">0 Songs</span>
+                </div>
+                <!-- Search bar -->
+                <div class="relative">
+                    <i class="fa-solid fa-magnifying-glass absolute left-3 top-3 text-slate-400 text-xs"></i>
+                    <input type="text" id="track-search-input" placeholder="Search track name or artist..." class="w-full bg-slate-900/60 border border-sakura-300/10 rounded-xl pl-9 pr-4 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-sakura-400/50">
+                </div>
+                <div id="tracks-list" class="space-y-1.5 pt-1">
+                    <!-- Populated dynamically -->
+                </div>
+            </section>
+
+            <!-- View: Albums -->
+            <section id="view-albums" class="view-section space-y-4 hidden">
+                <h2 class="font-sakura font-bold text-lg text-white mb-2">Albums</h2>
+                <div id="albums-grid" class="grid grid-cols-2 gap-3">
+                    <!-- Populated dynamically -->
+                </div>
+            </section>
+
+            <!-- View: Artists -->
+            <section id="view-artists" class="view-section space-y-3 hidden">
+                <h2 class="font-sakura font-bold text-lg text-white mb-2">Artists</h2>
+                <div id="artists-list" class="space-y-2">
+                    <!-- Populated dynamically -->
+                </div>
+            </section>
+
+            <!-- View: Playlists -->
+            <section id="view-playlists" class="view-section space-y-4 hidden">
+                <div class="flex justify-between items-center">
+                    <h2 class="font-sakura font-bold text-lg text-white">Playlists</h2>
+                    <button id="btn-create-playlist" class="px-3 py-1.5 rounded-xl bg-sakura-500/20 text-sakura-300 hover:bg-sakura-500/30 text-xs font-medium border border-sakura-300/20">
+                        <i class="fa-solid fa-plus mr-1"></i> New Playlist
+                    </button>
+                </div>
+                <div id="playlists-list" class="space-y-2">
+                    <!-- Populated dynamically -->
+                </div>
+            </section>
+
+            <!-- View: Settings -->
+            <section id="view-settings" class="view-section space-y-5 hidden">
+                <h2 class="font-sakura font-bold text-lg text-white mb-2">Settings & Android Guide</h2>
+                
+                <!-- Preferences Form -->
+                <div class="space-y-4">
+                    <!-- Complete APK / Installation Guide Card -->
+                    <div class="glass-card p-4 rounded-2xl border border-sakura-400/30 space-y-3">
+                        <div class="flex items-center space-x-2 text-sakura-300">
+                            <i class="fa-solid fa-mobile-screen-button text-lg"></i>
+                            <h3 class="font-sakura font-bold text-sm text-white">Mobile APK & Setup Guide</h3>
+                        </div>
+                        <p class="text-[11px] text-slate-300 leading-relaxed">
+                            Aap is app ko apne Android phone me **2 aasan tarikon** se install aur use kar sakte hain:
+                        </p>
+                        
+                        <div class="space-y-2 text-xs text-slate-300">
+                            <div class="p-2.5 rounded-xl bg-slate-900/60 border border-sakura-300/10 space-y-1">
+                                <span class="font-semibold text-sakura-300">Tarika 1: Direct Mobile Install (Instant)</span>
+                                <p class="text-[11px] text-slate-400">1. Chrome Browser me yeh link kholen.<br>2. Chrome menu (⋮) me **"Add to Home screen"** ya **"Install App"** par tap karein.<br>3. Fast, smooth aur fully offline native app jaisa chalega!</p>
+                            </div>
+
+                            <div class="p-2.5 rounded-xl bg-slate-900/60 border border-sakura-300/10 space-y-1">
+                                <span class="font-semibold text-sakura-300">Tarika 2: GitHub + PWABuilder se APK Banana</span>
+                                <p class="text-[11px] text-slate-400">1. Is code ko `index.html` naam se save karein.<br>2. GitHub par upload karke **GitHub Pages** active karein.<br>3. Live link ko [PWABuilder.com](https://www.pwabuilder.com) me daal kar direct **Android APK** generate karke download karein.</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Default Screen -->
+                    <div class="glass-card p-4 rounded-2xl space-y-2">
+                        <label class="block text-xs font-semibold text-sakura-200">Default Home Screen View</label>
+                        <select id="setting-default-screen" class="w-full bg-slate-900/80 border border-sakura-300/20 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-sakura-400">
+                            <option value="view-custom">Custom (Default)</option>
+                            <option value="view-tracks">Tracks</option>
+                            <option value="view-albums">Albums</option>
+                            <option value="view-artists">Artists</option>
+                            <option value="view-playlists">Playlists</option>
+                        </select>
+                        <p class="text-[11px] text-slate-400">App will load into this screen automatically when opened.</p>
+                    </div>
+
+                    <!-- Album Art Preference -->
+                    <div class="glass-card p-4 rounded-2xl space-y-2">
+                        <label class="block text-xs font-semibold text-sakura-200">Album Art Extraction Setting</label>
+                        <select id="setting-album-art" class="w-full bg-slate-900/80 border border-sakura-300/20 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-sakura-400">
+                            <option value="both">Both (ID3 Tag Art + Sakura Fallback)</option>
+                            <option value="id3">ID3 Tag Artwork Only</option>
+                            <option value="fallback">Sakura Theme Art Always</option>
+                        </select>
+                        <p class="text-[11px] text-slate-400">Choose how album art is rendered for audio tracks in your library.</p>
+                    </div>
+
+                    <!-- Audio Visualizer Toggle -->
+                    <div class="glass-card p-4 rounded-2xl flex items-center justify-between">
+                        <div>
+                            <p class="text-xs font-semibold text-sakura-200">Audio Visualizer Waveform</p>
+                            <p class="text-[11px] text-slate-400">Render dynamic audio wave visualizer in Now Playing</p>
+                        </div>
+                        <input type="checkbox" id="setting-visualizer" checked class="w-4 h-4 accent-sakura-500 rounded">
+                    </div>
+
+                    <!-- Storage Management -->
+                    <div class="glass-card p-4 rounded-2xl space-y-3">
+                        <p class="text-xs font-semibold text-sakura-200">Offline Database Storage</p>
+                        <p class="text-[11px] text-slate-400">Tracks are securely saved in your browser's local IndexedDB space.</p>
+                        <button id="btn-clear-db" class="w-full py-2 rounded-xl border border-red-500/40 bg-red-500/10 text-red-300 text-xs hover:bg-red-500/20 transition-colors">
+                            Clear Stored Songs Library
+                        </button>
+                    </div>
+                </div>
+            </section>
+        </main>
+
+        <!-- Mini Player / Now Playing Drawer Trigger -->
+        <div id="mini-player" class="bg-sakura-darkCard/90 border-t border-sakura-300/15 px-4 py-2.5 flex items-center justify-between cursor-pointer z-20">
+            <div class="flex items-center space-x-3 overflow-hidden flex-1" id="mini-player-info">
+                <div class="relative w-10 h-10 rounded-xl overflow-hidden flex-shrink-0 bg-slate-800 border border-sakura-300/20">
+                    <img id="mini-art" src="" alt="Art" class="w-full h-full object-cover">
+                    <div id="mini-vinyl-ring" class="absolute inset-0 border-2 border-sakura-400/30 rounded-full animate-vinyl paused"></div>
+                </div>
+                <div class="truncate">
+                    <h4 id="mini-title" class="text-xs font-semibold text-white truncate">No Song Playing</h4>
+                    <p id="mini-artist" class="text-[11px] text-sakura-300/70 truncate">Select a track to start</p>
+                </div>
+            </div>
+            
+            <div class="flex items-center space-x-3 ml-2">
+                <button id="mini-btn-play" class="w-9 h-9 rounded-full bg-sakura-500 text-white flex items-center justify-center shadow-md hover:bg-sakura-600 transition-all">
+                    <i class="fa-solid fa-play text-xs ml-0.5"></i>
+                </button>
+                <button id="mini-btn-next" class="text-slate-300 hover:text-white p-1">
+                    <i class="fa-solid fa-forward-step text-sm"></i>
+                </button>
+            </div>
+        </div>
+
+        <!-- Navigation Bar -->
+        <nav class="bg-sakura-darkBg/95 border-t border-sakura-300/10 px-2 py-2 flex justify-around items-center z-20 text-[10px]">
+            <button class="nav-btn flex flex-col items-center space-y-1 text-sakura-400" data-target="view-custom">
+                <i class="fa-solid fa-house text-base"></i>
+                <span>Custom</span>
+            </button>
+            <button class="nav-btn flex flex-col items-center space-y-1 text-slate-400 hover:text-sakura-300" data-target="view-tracks">
+                <i class="fa-solid fa-music text-base"></i>
+                <span>Tracks</span>
+            </button>
+            <button class="nav-btn flex flex-col items-center space-y-1 text-slate-400 hover:text-sakura-300" data-target="view-albums">
+                <i class="fa-solid fa-compact-disc text-base"></i>
+                <span>Albums</span>
+            </button>
+            <button class="nav-btn flex flex-col items-center space-y-1 text-slate-400 hover:text-sakura-300" data-target="view-artists">
+                <i class="fa-solid fa-user-astronaut text-base"></i>
+                <span>Artists</span>
+            </button>
+            <button class="nav-btn flex flex-col items-center space-y-1 text-slate-400 hover:text-sakura-300" data-target="view-playlists">
+                <i class="fa-solid fa-list-check text-base"></i>
+                <span>Playlists</span>
+            </button>
+            <button class="nav-btn flex flex-col items-center space-y-1 text-slate-400 hover:text-sakura-300" data-target="view-settings">
+                <i class="fa-solid fa-gear text-base"></i>
+                <span>Settings</span>
+            </button>
+        </nav>
+
+        <!-- Fullscreen Now Playing Overlay / Modal -->
+        <div id="full-player-modal" class="fixed inset-0 z-50 bg-sakura-darkBg/95 backdrop-blur-xl flex flex-col justify-between p-6 transition-transform duration-300 transform translate-y-full">
+            <!-- Top Controls -->
+            <div class="flex justify-between items-center">
+                <button id="btn-close-full-player" class="w-10 h-10 rounded-full bg-slate-800/60 text-slate-300 flex items-center justify-center hover:bg-slate-700">
+                    <i class="fa-solid fa-chevron-down text-sm"></i>
+                </button>
+                <div class="text-center">
+                    <p class="text-[10px] uppercase font-bold text-sakura-300 tracking-widest">Now Playing</p>
+                    <p id="full-player-subtitle" class="text-xs text-slate-400">Sakura Tunes</p>
+                </div>
+                <button id="btn-toggle-fav" class="w-10 h-10 rounded-full bg-slate-800/60 text-slate-400 flex items-center justify-center hover:text-sakura-400">
+                    <i class="fa-solid fa-heart text-sm"></i>
+                </button>
+            </div>
+
+            <!-- Artwork Display -->
+            <div class="my-auto flex flex-col items-center justify-center py-4">
+                <div class="relative w-64 h-64 md:w-72 md:h-72 rounded-3xl overflow-hidden shadow-2xl border-2 border-sakura-300/20 group">
+                    <img id="full-art" src="" alt="Album Artwork" class="w-full h-full object-cover">
+                    <!-- Audio Visualizer Overlay Canvas -->
+                    <canvas id="visualizer-canvas" class="absolute inset-0 w-full h-full pointer-events-none opacity-80"></canvas>
+                </div>
+                
+                <!-- Track Details -->
+                <div class="mt-6 text-center max-w-xs">
+                    <h3 id="full-title" class="font-sakura text-lg font-bold text-white truncate">Track Title</h3>
+                    <p id="full-artist" class="text-xs text-sakura-300/80 truncate mt-1">Artist Name</p>
+                    <p id="full-album" class="text-[11px] text-slate-400 truncate mt-0.5">Album Title</p>
+                </div>
+            </div>
+
+            <!-- Player Controls -->
+            <div class="space-y-4 max-w-xs mx-auto w-full mb-4">
+                <!-- Seekbar -->
+                <div class="space-y-1">
+                    <input type="range" id="seek-bar" value="0" min="0" max="100" class="w-full">
+                    <div class="flex justify-between text-[10px] text-slate-400 font-mono">
+                        <span id="current-time">0:00</span>
+                        <span id="total-duration">0:00</span>
+                    </div>
+                </div>
+
+                <!-- Main Play Buttons Row -->
+                <div class="flex items-center justify-between px-2">
+                    <button id="btn-shuffle" class="text-slate-400 hover:text-sakura-300 text-sm p-2">
+                        <i class="fa-solid fa-shuffle"></i>
+                    </button>
+                    <button id="btn-prev" class="text-slate-200 hover:text-white text-xl p-2">
+                        <i class="fa-solid fa-backward-step"></i>
+                    </button>
+                    <button id="btn-play-full" class="w-14 h-14 rounded-full bg-gradient-to-tr from-sakura-600 to-sakura-400 text-white flex items-center justify-center shadow-lg shadow-sakura-500/40 text-xl transition-transform active:scale-95">
+                        <i class="fa-solid fa-play ml-1"></i>
+                    </button>
+                    <button id="btn-next" class="text-slate-200 hover:text-white text-xl p-2">
+                        <i class="fa-solid fa-forward-step"></i>
+                    </button>
+                    <button id="btn-repeat" class="text-slate-400 hover:text-sakura-300 text-sm p-2">
+                        <i class="fa-solid fa-repeat"></i>
+                    </button>
+                </div>
+
+                <!-- Volume Bar -->
+                <div class="flex items-center space-x-3 pt-2 px-2">
+                    <button id="btn-mute" class="text-slate-400 text-xs">
+                        <i class="fa-solid fa-volume-high"></i>
+                    </button>
+                    <input type="range" id="volume-bar" value="80" min="0" max="100" class="w-full">
+                </div>
+            </div>
+        </div>
+
+        <!-- Custom Notification Message Box -->
+        <div id="toast-msg" class="fixed top-5 left-1/2 -translate-x-1/2 bg-sakura-500 text-white text-xs px-4 py-2 rounded-xl shadow-xl z-50 transition-opacity duration-300 opacity-0 pointer-events-none flex items-center space-x-2">
+            <span id="toast-text">Notification</span>
+        </div>
+    </div>
+
+    <!-- Application Script -->
+    <script>
+        /**
+         * SAKURA TUNES APP ENGINE
+         */
+        const DEFAULT_FALLBACK_ART = 'https://placehold.co/400x400/2d1f30/fb7185?text=🌸+SakuraTunes';
+        
+        // IndexedDB Configuration
+        const DB_NAME = 'SakuraTunesDB';
+        const DB_VERSION = 1;
+        let db = null;
+
+        // Application State
+        const state = {
+            tracks: [],
+            playlists: JSON.parse(localStorage.getItem('sakuratunes_playlists') || '[]'),
+            favorites: JSON.parse(localStorage.getItem('sakuratunes_favorites') || '[]'),
+            currentTrackIndex: -1,
+            isPlaying: false,
+            isShuffle: false,
+            repeatMode: 'off', // off, one, all
+            settings: {
+                defaultHome: localStorage.getItem('sakuratunes_default_home') || 'view-custom',
+                albumArtSetting: localStorage.getItem('sakuratunes_album_art') || 'both',
+                visualizerEnabled: localStorage.getItem('sakuratunes_visualizer') !== 'false'
+            },
+            audioContext: null,
+            analyser: null,
+            audioSource: null,
+            playPromise: null // Tracks pending play request to avoid play/pause race conditions
+        };
+
+        // DOM Elements
+        const audio = new Audio();
+        const canvas = document.getElementById('sakura-canvas');
+        const ctx = canvas.getContext('2d');
+        const visualizerCanvas = document.getElementById('visualizer-canvas');
+        const visCtx = visualizerCanvas.getContext('2d');
+
+        // Init IndexedDB
+        function initDB() {
+            return new Promise((resolve, reject) => {
+                const request = indexedDB.open(DB_NAME, DB_VERSION);
+                request.onupgradeneeded = (e) => {
+                    const dbInstance = e.target.result;
+                    if (!dbInstance.objectStoreNames.contains('tracks')) {
+                        dbInstance.createObjectStore('tracks', { keyPath: 'id' });
+                    }
+                };
+                request.onsuccess = (e) => {
+                    db = e.target.result;
+                    resolve(db);
+                };
+                request.onerror = (e) => reject(e);
+            });
+        }
+
+        // Save track binary & metadata into IndexedDB
+        async function saveTrackToDB(track) {
+            if (!db) return;
+            const tx = db.transaction('tracks', 'readwrite');
+            const store = tx.objectStore('tracks');
+            store.put(track);
+        }
+
+        // Load all stored tracks from IndexedDB
+        async function loadTracksFromDB() {
+            if (!db) return [];
+            return new Promise((resolve) => {
+                const tx = db.transaction('tracks', 'readonly');
+                const store = tx.objectStore('tracks');
+                const request = store.getAll();
+                request.onsuccess = () => resolve(request.result || []);
+                request.onerror = () => resolve([]);
+            });
+        }
+
+        // Clear IndexedDB Library
+        async function clearDatabase() {
+            if (!db) return;
+            const tx = db.transaction('tracks', 'readwrite');
+            tx.objectStore('tracks').clear();
+            state.tracks = [];
+            state.currentTrackIndex = -1;
+            audio.pause();
+            updateUI();
+            showToast('Library cleared successfully');
+        }
+
+        /* -------------------------------------------------------------
+         * FALLING PETALS ANIMATION ENGINE
+         * ------------------------------------------------------------- */
+        let petals = [];
+        function resizeCanvas() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        }
+
+        class Petal {
+            constructor() {
+                this.x = Math.random() * canvas.width;
+                this.y = Math.random() * canvas.height - canvas.height;
+                this.size = Math.random() * 8 + 6;
+                this.speedY = Math.random() * 1.2 + 0.8;
+                this.speedX = Math.random() * 0.6 - 0.3;
+                this.angle = Math.random() * 360;
+                this.spin = Math.random() * 1.5 - 0.75;
+                this.opacity = Math.random() * 0.5 + 0.3;
+            }
+            update() {
+                this.y += this.speedY;
+                this.x += this.speedX + Math.sin(this.y * 0.01) * 0.3;
+                this.angle += this.spin;
+                if (this.y > canvas.height) {
+                    this.y = -10;
+                    this.x = Math.random() * canvas.width;
+                }
+            }
+            draw() {
+                ctx.save();
+                ctx.translate(this.x, this.y);
+                ctx.rotate((this.angle * Math.PI) / 180);
+                ctx.globalAlpha = this.opacity;
+                ctx.fillStyle = '#fecdd6';
+                ctx.beginPath();
+                ctx.moveTo(0, 0);
+                ctx.bezierCurveTo(-this.size, -this.size / 2, -this.size, this.size, 0, this.size);
+                ctx.bezierCurveTo(this.size, this.size, this.size, -this.size / 2, 0, 0);
+                ctx.fill();
+                ctx.restore();
+            }
+        }
+
+        function initPetals() {
+            resizeCanvas();
+            window.addEventListener('resize', resizeCanvas);
+            petals = Array.from({ length: 30 }, () => new Petal());
+            function animate() {
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+                petals.forEach(p => { p.update(); p.draw(); });
+                requestAnimationFrame(animate);
+            }
+            animate();
+        }
+
+        /* -------------------------------------------------------------
+         * AUDIO VISUALIZER
+         * ------------------------------------------------------------- */
+        function initAudioContext() {
+            if (state.audioContext) return;
+            try {
+                const AudioCtx = window.AudioContext || window.webkitAudioContext;
+                state.audioContext = new AudioCtx();
+                state.analyser = state.audioContext.createAnalyser();
+                state.analyser.fftSize = 64;
+                state.audioSource = state.audioContext.createMediaElementSource(audio);
+                state.audioSource.connect(state.analyser);
+                state.analyser.connect(state.audioContext.destination);
+                drawVisualizer();
+            } catch (e) {
+                console.log("Audio visualizer initialization restricted until playback starts");
+            }
+        }
+
+        function drawVisualizer() {
+            requestAnimationFrame(drawVisualizer);
+            if (!state.analyser || !state.settings.visualizerEnabled) {
+                visCtx.clearRect(0, 0, visualizerCanvas.width, visualizerCanvas.height);
+                return;
+            }
+            const bufferLength = state.analyser.frequencyBinCount;
+            const dataArray = new Uint8Array(bufferLength);
+            state.analyser.getByteFrequencyData(dataArray);
+
+            visCtx.clearRect(0, 0, visualizerCanvas.width, visualizerCanvas.height);
+            const width = visualizerCanvas.width;
+            const height = visualizerCanvas.height;
+            const barWidth = (width / bufferLength) * 1.5;
+            let x = 0;
+
+            for (let i = 0; i < bufferLength; i++) {
+                const barHeight = (dataArray[i] / 255) * height * 0.7;
+                visCtx.fillStyle = `rgba(251, 113, 133, ${0.3 + (dataArray[i] / 255) * 0.6})`;
+                visCtx.fillRect(x, height - barHeight, barWidth - 2, barHeight);
+                x += barWidth;
+            }
+        }
+
+        /* -------------------------------------------------------------
+         * LOCAL AUDIO FILE LOADING & ID3 PARSING
+         * ------------------------------------------------------------- */
+        async function handleFileSelect(files) {
+            if (!files || files.length === 0) return;
+            showToast(`Loading ${files.length} file(s)...`);
+
+            for (let file of files) {
+                const id = 'track_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5);
+                const track = {
+                    id,
+                    title: file.name.replace(/\.[^/.]+$/, ""),
+                    artist: 'Unknown Artist',
+                    album: 'Unknown Album',
+                    artwork: DEFAULT_FALLBACK_ART,
+                    fileData: file,
+                    dateAdded: Date.now()
+                };
+
+                // Extract Metadata via jsmediatags
+                await new Promise((resolve) => {
+                    if (window.jsmediatags) {
+                        window.jsmediatags.read(file, {
+                            onSuccess: function(tag) {
+                                const tags = tag.tags;
+                                if (tags.title) track.title = tags.title;
+                                if (tags.artist) track.artist = tags.artist;
+                                if (tags.album) track.album = tags.album;
+                                
+                                // ID3 Album Art Extraction
+                                if (tags.picture) {
+                                    const { data, format } = tags.picture;
+                                    let base64String = "";
+                                    for (let i = 0; i < data.length; i++) {
+                                        base64String += String.fromCharCode(data[i]);
+                                    }
+                                    track.artwork = `data:${format};base64,${window.btoa(base64String)}`;
+                                }
+                                resolve();
+                            },
+                            onError: function() {
+                                resolve();
+                            }
+                        });
+                    } else {
+                        resolve();
+                    }
+                });
+
+                state.tracks.push(track);
+                await saveTrackToDB(track);
+            }
+
+            showToast("Tracks added to offline library");
+            updateUI();
+        }
+
+        /* -------------------------------------------------------------
+         * NAVIGATION & VIEWS
+         * ------------------------------------------------------------- */
+        function switchView(targetViewId) {
+            document.querySelectorAll('.view-section').forEach(view => {
+                view.classList.add('hidden');
+            });
+            const targetView = document.getElementById(targetViewId);
+            if (targetView) targetView.classList.remove('hidden');
+
+            // Highlight nav button
+            document.querySelectorAll('.nav-btn').forEach(btn => {
+                if (btn.dataset.target === targetViewId) {
+                    btn.classList.add('text-sakura-400');
+                    btn.classList.remove('text-slate-400');
+                } else {
+                    btn.classList.remove('text-sakura-400');
+                    btn.classList.add('text-slate-400');
+                }
+            });
+        }
+
+        /* -------------------------------------------------------------
+         * PLAYBACK CONTROLLER
+         * ------------------------------------------------------------- */
+        async function playTrack(index) {
+            if (index < 0 || index >= state.tracks.length) return;
+            initAudioContext();
+            
+            // Wait for any existing pending play request before changing track
+            if (state.playPromise) {
+                try {
+                    await state.playPromise;
+                } catch (err) {
+                    // Ignore expected play interruption errors
+                }
+            }
+
+            state.currentTrackIndex = index;
+            const track = state.tracks[index];
+
+            if (track.fileData) {
+                audio.src = URL.createObjectURL(track.fileData);
+            }
+
+            state.playPromise = audio.play();
+            try {
+                await state.playPromise;
+                state.isPlaying = true;
+                updatePlaybackUI();
+            } catch (e) {
+                if (e.name !== 'AbortError') {
+                    console.error("Audio playback error:", e);
+                }
+                state.isPlaying = false;
+                updatePlaybackUI();
+            } finally {
+                state.playPromise = null;
+            }
+        }
+
+        async function togglePlayPause() {
+            if (state.currentTrackIndex === -1 && state.tracks.length > 0) {
+                playTrack(0);
+                return;
+            }
+
+            // Safe pause handling if a play promise is still pending
+            if (state.playPromise) {
+                try {
+                    await state.playPromise;
+                } catch (err) {
+                    // Ignore interruption
+                }
+            }
+
+            if (state.isPlaying) {
+                audio.pause();
+                state.isPlaying = false;
+            } else {
+                state.playPromise = audio.play();
+                try {
+                    await state.playPromise;
+                    state.isPlaying = true;
+                } catch (e) {
+                    if (e.name !== 'AbortError') {
+                        console.error("Audio play error:", e);
+                    }
+                    state.isPlaying = false;
+                } finally {
+                    state.playPromise = null;
+                }
+            }
+            updatePlaybackUI();
+        }
+
+        function playNextTrack() {
+            if (state.tracks.length === 0) return;
+            let nextIndex = state.currentTrackIndex + 1;
+            if (state.isShuffle) {
+                nextIndex = Math.floor(Math.random() * state.tracks.length);
+            } else if (nextIndex >= state.tracks.length) {
+                nextIndex = 0;
+            }
+            playTrack(nextIndex);
+        }
+
+        function playPrevTrack() {
+            if (state.tracks.length === 0) return;
+            let prevIndex = state.currentTrackIndex - 1;
+            if (prevIndex < 0) prevIndex = state.tracks.length - 1;
+            playTrack(prevIndex);
+        }
+
+        /* -------------------------------------------------------------
+         * UI RENDERERS
+         * ------------------------------------------------------------- */
+        function getResolvedArtwork(track) {
+            const setting = state.settings.albumArtSetting;
+            if (setting === 'fallback') return DEFAULT_FALLBACK_ART;
+            if (setting === 'id3') return track.artwork || DEFAULT_FALLBACK_ART;
+            // 'both' setting
+            return track.artwork || DEFAULT_FALLBACK_ART;
+        }
+
+        function updateUI() {
+            renderTracksList();
+            renderCustomDashboard();
+            renderAlbums();
+            renderArtists();
+            renderPlaylists();
+            updatePlaybackUI();
+        }
+
+        function renderCustomDashboard() {
+            document.getElementById('custom-total-tracks').innerText = state.tracks.length;
+            document.getElementById('custom-art-mode-display').innerText = 
+                state.settings.albumArtSetting === 'both' ? 'Both (ID3 + Fallback)' :
+                state.settings.albumArtSetting === 'id3' ? 'ID3 Tag Artwork Only' : 'Sakura Fallback Theme';
+
+            // Favorites List
+            const favContainer = document.getElementById('custom-favorites-list');
+            favContainer.innerHTML = '';
+            const favTracks = state.tracks.filter(t => state.favorites.includes(t.id));
+            if (favTracks.length === 0) {
+                favContainer.innerHTML = `<p class="text-xs text-slate-500 italic p-2 glass-card rounded-xl">No favorite tracks marked yet.</p>`;
+            } else {
+                favTracks.forEach(track => {
+                    const idx = state.tracks.findIndex(t => t.id === track.id);
+                    favContainer.appendChild(createTrackRowElement(track, idx));
+                });
+            }
+
+            // Recent Tracks
+            const recentContainer = document.getElementById('custom-recent-list');
+            recentContainer.innerHTML = '';
+            const recentTracks = [...state.tracks].reverse().slice(0, 3);
+            if (recentTracks.length === 0) {
+                recentContainer.innerHTML = `<p class="text-xs text-slate-500 italic p-2 glass-card rounded-xl">No recent audio files uploaded.</p>`;
+            } else {
+                recentTracks.forEach(track => {
+                    const idx = state.tracks.findIndex(t => t.id === track.id);
+                    recentContainer.appendChild(createTrackRowElement(track, idx));
+                });
+            }
+        }
+
+        function createTrackRowElement(track, index) {
+            const row = document.createElement('div');
+            const isCurrent = state.currentTrackIndex === index;
+            row.className = `glass-card p-2.5 rounded-2xl flex items-center justify-between hover:bg-sakura-500/10 cursor-pointer transition-all border border-sakura-300/10 ${isCurrent ? 'border-sakura-400 bg-sakura-500/20' : ''}`;
+            
+            const artUrl = getResolvedArtwork(track);
+
+            row.innerHTML = `
+                <div class="flex items-center space-x-3 overflow-hidden flex-1">
+                    <img src="${artUrl}" class="w-10 h-10 rounded-xl object-cover flex-shrink-0 border border-sakura-300/20">
+                    <div class="truncate">
+                        <h4 class="text-xs font-semibold ${isCurrent ? 'text-sakura-300' : 'text-white'} truncate">${escapeHTML(track.title)}</h4>
+                        <p class="text-[11px] text-slate-400 truncate">${escapeHTML(track.artist)}</p>
+                    </div>
+                </div>
+                <button class="play-single-btn text-sakura-300 hover:text-sakura-200 p-2 text-sm">
+                    <i class="fa-solid ${isCurrent && state.isPlaying ? 'fa-pause' : 'fa-play'}"></i>
+                </button>
+            `;
+
+            row.addEventListener('click', () => playTrack(index));
+            return row;
+        }
+
+        function renderTracksList() {
+            const container = document.getElementById('tracks-list');
+            document.getElementById('track-count').innerText = `${state.tracks.length} Songs`;
+            container.innerHTML = '';
+
+            if (state.tracks.length === 0) {
+                container.innerHTML = `
+                    <div class="text-center py-10 glass-card rounded-2xl space-y-2">
+                        <i class="fa-solid fa-music-slash text-3xl text-sakura-300/40"></i>
+                        <p class="text-xs text-slate-400">No offline music tracks found.</p>
+                        <p class="text-[10px] text-slate-500">Tap top folder icon to add local audio files.</p>
+                    </div>
+                `;
+                return;
+            }
+
+            state.tracks.forEach((track, idx) => {
+                container.appendChild(createTrackRowElement(track, idx));
+            });
+        }
+
+        function renderAlbums() {
+            const grid = document.getElementById('albums-grid');
+            grid.innerHTML = '';
+            
+            const albumsMap = {};
+            state.tracks.forEach(t => {
+                const albumName = t.album || 'Unknown Album';
+                if (!albumsMap[albumName]) albumsMap[albumName] = [];
+                albumsMap[albumName].push(t);
+            });
+
+            if (Object.keys(albumsMap).length === 0) {
+                grid.innerHTML = `<p class="col-span-2 text-xs text-slate-400 text-center py-6">No albums available</p>`;
+                return;
+            }
+
+            Object.entries(albumsMap).forEach(([albumName, tracks]) => {
+                const firstTrack = tracks[0];
+                const artUrl = getResolvedArtwork(firstTrack);
+                const card = document.createElement('div');
+                card.className = "glass-card p-3 rounded-2xl space-y-2 cursor-pointer hover:border-sakura-400/40 transition-all";
+                card.innerHTML = `
+                    <div class="w-full aspect-square rounded-xl overflow-hidden bg-slate-800">
+                        <img src="${artUrl}" class="w-full h-full object-cover">
+                    </div>
+                    <div class="truncate">
+                        <h4 class="text-xs font-semibold text-white truncate">${escapeHTML(albumName)}</h4>
+                        <p class="text-[10px] text-slate-400">${tracks.length} track(s)</p>
+                    </div>
+                `;
+                card.addEventListener('click', () => {
+                    const firstIdx = state.tracks.findIndex(t => t.id === firstTrack.id);
+                    playTrack(firstIdx);
+                });
+                grid.appendChild(card);
+            });
+        }
+
+        function renderArtists() {
+            const container = document.getElementById('artists-list');
+            container.innerHTML = '';
+
+            const artistsMap = {};
+            state.tracks.forEach(t => {
+                const artistName = t.artist || 'Unknown Artist';
+                if (!artistsMap[artistName]) artistsMap[artistName] = [];
+                artistsMap[artistName].push(t);
+            });
+
+            if (Object.keys(artistsMap).length === 0) {
+                container.innerHTML = `<p class="text-xs text-slate-400 text-center py-6">No artists available</p>`;
+                return;
+            }
+
+            Object.entries(artistsMap).forEach(([artistName, tracks]) => {
+                const row = document.createElement('div');
+                row.className = "glass-card p-3 rounded-2xl flex items-center justify-between hover:bg-sakura-500/10 cursor-pointer";
+                row.innerHTML = `
+                    <div class="flex items-center space-x-3">
+                        <div class="w-10 h-10 rounded-full bg-sakura-500/20 text-sakura-300 flex items-center justify-center font-bold text-xs">
+                            ${artistName.charAt(0).toUpperCase()}
+                        </div>
+                        <div>
+                            <h4 class="text-xs font-semibold text-white">${escapeHTML(artistName)}</h4>
+                            <p class="text-[10px] text-slate-400">${tracks.length} song(s)</p>
+                        </div>
+                    </div>
+                    <i class="fa-solid fa-chevron-right text-xs text-slate-500"></i>
+                `;
+                row.addEventListener('click', () => {
+                    const firstIdx = state.tracks.findIndex(t => t.id === tracks[0].id);
+                    playTrack(firstIdx);
+                });
+                container.appendChild(row);
+            });
+        }
+
+        function renderPlaylists() {
+            const container = document.getElementById('playlists-list');
+            container.innerHTML = '';
+
+            if (state.playlists.length === 0) {
+                container.innerHTML = `<p class="text-xs text-slate-400 text-center py-6 glass-card rounded-2xl">No custom playlists created yet.</p>`;
+                return;
+            }
+
+            state.playlists.forEach((pl, idx) => {
+                const row = document.createElement('div');
+                row.className = "glass-card p-3 rounded-2xl flex items-center justify-between";
+                row.innerHTML = `
+                    <div class="flex items-center space-x-3">
+                        <div class="w-10 h-10 rounded-xl bg-sakura-500/20 text-sakura-300 flex items-center justify-center text-sm">
+                            <i class="fa-solid fa-list-music"></i>
+                        </div>
+                        <div>
+                            <h4 class="text-xs font-semibold text-white">${escapeHTML(pl.name)}</h4>
+                            <p class="text-[10px] text-slate-400">${pl.trackIds.length} track(s)</p>
+                        </div>
+                    </div>
+                    <button class="delete-pl-btn text-xs text-red-400 hover:text-red-300 p-2" data-index="${idx}">
+                        <i class="fa-solid fa-trash"></i>
+                    </button>
+                `;
+                container.appendChild(row);
+            });
+
+            document.querySelectorAll('.delete-pl-btn').forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    const i = parseInt(btn.dataset.index);
+                    state.playlists.splice(i, 1);
+                    localStorage.setItem('sakuratunes_playlists', JSON.stringify(state.playlists));
+                    renderPlaylists();
+                    showToast("Playlist deleted");
+                });
+            });
+        }
+
+        function updatePlaybackUI() {
+            const currentTrack = state.tracks[state.currentTrackIndex];
+            const miniArt = document.getElementById('mini-art');
+            const miniTitle = document.getElementById('mini-title');
+            const miniArtist = document.getElementById('mini-artist');
+            const miniPlayBtn = document.getElementById('mini-btn-play');
+            const fullPlayBtn = document.getElementById('btn-play-full');
+            const vinylRing = document.getElementById('mini-vinyl-ring');
+
+            if (!currentTrack) {
+                miniTitle.innerText = "No Song Playing";
+                miniArtist.innerText = "Select a track to start";
+                miniArt.src = DEFAULT_FALLBACK_ART;
+                document.getElementById('full-art').src = DEFAULT_FALLBACK_ART;
+                return;
+            }
+
+            const artwork = getResolvedArtwork(currentTrack);
+            miniArt.src = artwork;
+            miniTitle.innerText = currentTrack.title;
+            miniArtist.innerText = currentTrack.artist;
+
+            document.getElementById('full-art').src = artwork;
+            document.getElementById('full-title').innerText = currentTrack.title;
+            document.getElementById('full-artist').innerText = currentTrack.artist;
+            document.getElementById('full-album').innerText = currentTrack.album;
+
+            // Play state icons
+            const iconClass = state.isPlaying ? 'fa-pause' : 'fa-play';
+            miniPlayBtn.innerHTML = `<i class="fa-solid ${iconClass} text-xs ${state.isPlaying ? '' : 'ml-0.5'}"></i>`;
+            fullPlayBtn.innerHTML = `<i class="fa-solid ${iconClass} ${state.isPlaying ? '' : 'ml-1'}"></i>`;
+
+            if (state.isPlaying) {
+                vinylRing.classList.remove('paused');
+            } else {
+                vinylRing.classList.add('paused');
+            }
+
+            // Update Favorite Status Button
+            const isFav = state.favorites.includes(currentTrack.id);
+            const favBtn = document.getElementById('btn-toggle-fav');
+            favBtn.className = `w-10 h-10 rounded-full bg-slate-800/60 flex items-center justify-center ${isFav ? 'text-sakura-500' : 'text-slate-400'}`;
+        }
+
+        /* -------------------------------------------------------------
+         * UTILITIES & EVENT HANDLERS
+         * ------------------------------------------------------------- */
+        function escapeHTML(str) {
+            return str ? str.replace(/[&<>'"]/g, 
+                tag => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[tag] || tag)
+            ) : '';
+        }
+
+        function showToast(text) {
+            const toast = document.getElementById('toast-msg');
+            document.getElementById('toast-text').innerText = text;
+            toast.classList.remove('opacity-0', 'pointer-events-none');
+            setTimeout(() => {
+                toast.classList.add('opacity-0', 'pointer-events-none');
+            }, 2500);
+        }
+
+        function setupEventListeners() {
+            // File input loader
+            const fileInput = document.getElementById('audio-file-input');
+            fileInput.addEventListener('change', (e) => handleFileSelect(e.target.files));
+            
+            document.getElementById('import-btn-banner').addEventListener('click', () => fileInput.click());
+
+            // Bottom Nav View Switching
+            document.querySelectorAll('.nav-btn, .nav-shortcut-btn').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    const target = btn.dataset.target;
+                    if (target) switchView(target);
+                });
+            });
+
+            // Mini player click opens full player
+            document.getElementById('mini-player-info').addEventListener('click', () => {
+                document.getElementById('full-player-modal').classList.remove('translate-y-full');
+            });
+
+            document.getElementById('btn-close-full-player').addEventListener('click', () => {
+                document.getElementById('full-player-modal').classList.add('translate-y-full');
+            });
+
+            // Audio Controls
+            document.getElementById('mini-btn-play').addEventListener('click', (e) => {
+                e.stopPropagation();
+                togglePlayPause();
+            });
+            document.getElementById('btn-play-full').addEventListener('click', togglePlayPause);
+            document.getElementById('mini-btn-next').addEventListener('click', (e) => {
+                e.stopPropagation();
+                playNextTrack();
+            });
+            document.getElementById('btn-next').addEventListener('click', playNextTrack);
+            document.getElementById('btn-prev').addEventListener('click', playPrevTrack);
+
+            // Audio Element Events
+            audio.addEventListener('timeupdate', () => {
+                if (isNaN(audio.duration)) return;
+                const progress = (audio.currentTime / audio.duration) * 100;
+                document.getElementById('seek-bar').value = progress;
+                
+                // Format timestamps
+                const curM = Math.floor(audio.currentTime / 60);
+                const curS = Math.floor(audio.currentTime % 60);
+                const durM = Math.floor(audio.duration / 60);
+                const durS = Math.floor(audio.duration % 60);
+                
+                document.getElementById('current-time').innerText = `${curM}:${curS < 10 ? '0' : ''}${curS}`;
+                document.getElementById('total-duration').innerText = `${durM}:${durS < 10 ? '0' : ''}${durS}`;
+            });
+
+            audio.addEventListener('ended', () => {
+                if (state.repeatMode === 'one') {
+                    audio.currentTime = 0;
+                    audio.play();
+                } else {
+                    playNextTrack();
+                }
+            });
+
+            // Seek bar interaction
+            document.getElementById('seek-bar').addEventListener('input', (e) => {
+                if (!audio.duration) return;
+                const seekTo = (e.target.value / 100) * audio.duration;
+                audio.currentTime = seekTo;
+            });
+
+            // Volume bar
+            document.getElementById('volume-bar').addEventListener('input', (e) => {
+                audio.volume = e.target.value / 100;
+            });
+
+            // Repeat toggle
+            const repeatBtn = document.getElementById('btn-repeat');
+            repeatBtn.addEventListener('click', () => {
+                if (state.repeatMode === 'off') {
+                    state.repeatMode = 'all';
+                    repeatBtn.classList.add('text-sakura-400');
+                    showToast('Repeat All');
+                } else if (state.repeatMode === 'all') {
+                    state.repeatMode = 'one';
+                    repeatBtn.innerHTML = '<i class="fa-solid fa-repeat-1"></i>';
+                    showToast('Repeat One');
+                } else {
+                    state.repeatMode = 'off';
+                    repeatBtn.innerHTML = '<i class="fa-solid fa-repeat"></i>';
+                    repeatBtn.classList.remove('text-sakura-400');
+                    showToast('Repeat Off');
+                }
+            });
+
+            // Shuffle toggle
+            const shuffleBtn = document.getElementById('btn-shuffle');
+            shuffleBtn.addEventListener('click', () => {
+                state.isShuffle = !state.isShuffle;
+                if (state.isShuffle) {
+                    shuffleBtn.classList.add('text-sakura-400');
+                    showToast('Shuffle Mode On');
+                } else {
+                    shuffleBtn.classList.remove('text-sakura-400');
+                    showToast('Shuffle Mode Off');
+                }
+            });
+
+            // Favorite Toggle
+            document.getElementById('btn-toggle-fav').addEventListener('click', () => {
+                const track = state.tracks[state.currentTrackIndex];
+                if (!track) return;
+                const idx = state.favorites.indexOf(track.id);
+                if (idx > -1) {
+                    state.favorites.splice(idx, 1);
+                    showToast('Removed from favorites');
+                } else {
+                    state.favorites.push(track.id);
+                    showToast('Added to favorites');
+                }
+                localStorage.setItem('sakuratunes_favorites', JSON.stringify(state.favorites));
+                updatePlaybackUI();
+                renderCustomDashboard();
+            });
+
+            // Create Playlist Button
+            document.getElementById('btn-create-playlist').addEventListener('click', () => {
+                const name = prompt("Enter playlist name:");
+                if (name && name.trim()) {
+                    state.playlists.push({ name: name.trim(), trackIds: [] });
+                    localStorage.setItem('sakuratunes_playlists', JSON.stringify(state.playlists));
+                    renderPlaylists();
+                    showToast(`Playlist "${name}" created`);
+                }
+            });
+
+            // Settings Listeners
+            const screenSelect = document.getElementById('setting-default-screen');
+            screenSelect.value = state.settings.defaultHome;
+            screenSelect.addEventListener('change', (e) => {
+                state.settings.defaultHome = e.target.value;
+                localStorage.setItem('sakuratunes_default_home', e.target.value);
+                showToast("Default Home Screen updated");
+            });
+
+            const artSelect = document.getElementById('setting-album-art');
+            artSelect.value = state.settings.albumArtSetting;
+            artSelect.addEventListener('change', (e) => {
+                state.settings.albumArtSetting = e.target.value;
+                localStorage.setItem('sakuratunes_album_art', e.target.value);
+                updateUI();
+                showToast("Album Art mode updated");
+            });
+
+            const visCheckbox = document.getElementById('setting-visualizer');
+            visCheckbox.checked = state.settings.visualizerEnabled;
+            visCheckbox.addEventListener('change', (e) => {
+                state.settings.visualizerEnabled = e.target.checked;
+                localStorage.setItem('sakuratunes_visualizer', e.target.checked);
+            });
+
+            document.getElementById('btn-clear-db').addEventListener('click', clearDatabase);
+
+            // Track Search Filter
+            document.getElementById('track-search-input').addEventListener('input', (e) => {
+                const query = e.target.value.toLowerCase();
+                const rows = document.querySelectorAll('#tracks-list > div');
+                state.tracks.forEach((track, idx) => {
+                    if (rows[idx]) {
+                        const match = track.title.toLowerCase().includes(query) || track.artist.toLowerCase().includes(query);
+                        rows[idx].style.display = match ? 'flex' : 'none';
+                    }
+                });
+            });
+        }
+
+        /* -------------------------------------------------------------
+         * INITIALIZATION
+         * ------------------------------------------------------------- */
+        window.onload = async function() {
+            initPetals();
+
+            // Set Visualizer Canvas Size
+            visualizerCanvas.width = 300;
+            visualizerCanvas.height = 300;
+
+            await initDB();
+            state.tracks = await loadTracksFromDB();
+
+            // Ensure Home screen default configured correctly ('Custom')
+            switchView(state.settings.defaultHome);
+
+            setupEventListeners();
+            updateUI();
+        };
+    </script>
+</body>
+</html>
